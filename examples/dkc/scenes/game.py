@@ -65,6 +65,9 @@ class GameScene(Scene):
         self.was_on_ground = False
         self.facing_right = True
         self.barrel_cooldown = 0.0
+        self.total_deaths = 0
+        self.total_kills = 0
+        self.squish_effects: list[tuple[float, float, float]] = []  # (x, y, timer)
         self.level_complete = False
         self.level_transition_timer = 0.0
         self.death_timer = 0.0
@@ -192,7 +195,7 @@ class GameScene(Scene):
             enemy.add(BoxCollider(width=24, height=20, tag="enemy", solid=False))
             # Store patrol data
             enemy._patrol_dir = random.choice([-1, 1])
-            enemy._patrol_speed = random.uniform(40, 70)
+            enemy._patrol_speed = random.uniform(60, 110)  # faster enemies
             enemy._start_x = epos.x
             self.game.world.spawn(enemy)
 
@@ -328,6 +331,10 @@ class GameScene(Scene):
 
         # Move X, then check
         transform.position.x += rb.velocity.x * dt
+        # Clamp to left boundary
+        if transform.position.x < 10:
+            transform.position.x = 10
+            rb.velocity.x = 0
         player_rect = self._player_rect(transform)
         for tile_rect in self.tilemap.collide_rect(player_rect):
             if rb.velocity.x > 0:
@@ -383,12 +390,14 @@ class GameScene(Scene):
                 # Stomp if coming from above
                 if rb.velocity.y > 0 and transform.position.y < et.position.y - 5:
                     self.stomp_burst.emit(et.position.x, et.position.y)
+                    self.squish_effects.append((et.position.x, et.position.y, 0.3))
                     self.game.world.despawn(enemy)
-                    rb.velocity.y = -300  # bounce off enemy
+                    rb.velocity.y = -380  # bigger bounce off enemy
+                    self.total_kills += 1
                     if self.game.dev:
                         self.game.dev.log_enemy_kill()
                     self.shake_timer = 0.15
-                    self.shake_intensity = 3.0
+                    self.shake_intensity = 4.0
                 else:
                     self._die(transform, cause="enemy_contact")
 
@@ -442,11 +451,14 @@ class GameScene(Scene):
         if transform.position.y > self.tilemap.height * 32 + 100:
             self._die(transform, cause="fell_off_map")
 
-        # ── Update particles ──
+        # ── Update particles + effects ──
         self.dust.update(dt)
         self.banana_pop.update(dt)
         self.stomp_burst.update(dt)
         self.door_sparkle.update(dt)
+        self.squish_effects = [
+            (x, y, t - dt) for x, y, t in self.squish_effects if t - dt > 0
+        ]
 
     def _player_rect(self, transform: Transform) -> Rect:
         return Rect(transform.position.x - 10, transform.position.y - 14, 20, 28)
@@ -454,6 +466,7 @@ class GameScene(Scene):
     def _die(self, transform, cause: str = "unknown"):
         self.dying = True
         self.death_timer = 1.0
+        self.total_deaths += 1
         self.stomp_burst.emit(transform.position.x, transform.position.y, count=20)
         self.shake_timer = 0.3
         self.shake_intensity = 8.0
@@ -502,6 +515,20 @@ class GameScene(Scene):
                 self._draw_enemy(screen, sx, sy, entity)
             elif "door" in entity.tags:
                 self._draw_door(screen, sx, sy)
+
+        # ── Squish effects (dead enemies) ──
+        import pygame
+
+        for sx_e, sy_e, timer in self.squish_effects:
+            ex = int(sx_e - cam.x - shake_x)
+            ey = int(sy_e - cam.y - shake_y)
+            squish = timer / 0.3  # 1.0 → 0.0
+            w = int(26 * (2.0 - squish))
+            h = int(22 * squish * 0.5)
+            alpha = int(255 * squish)
+            surf = pygame.Surface((w, h), pygame.SRCALPHA)
+            surf.fill((*C_ENEMY, alpha))
+            screen.blit(surf, (ex - w // 2, ey - h // 2 + 8))
 
         # ── Particles ──
         poff = Vec2(cam.x + shake_x, cam.y + shake_y)
@@ -688,8 +715,12 @@ class GameScene(Scene):
             pygame.draw.circle(screen, C_PLAYER_BELLY, (200 + i * 22, 22), 4)
 
         # Bananas
-        pygame.draw.ellipse(screen, C_BANANA, (340, 12, 16, 12))
-        r.draw_text(f"x{self.bananas}", 360, 10, color=C_BANANA, size=18)
+        pygame.draw.ellipse(screen, C_BANANA, (310, 12, 16, 12))
+        r.draw_text(f"x{self.bananas}", 330, 10, color=C_BANANA, size=18)
+
+        # Kills
+        pygame.draw.ellipse(screen, C_ENEMY, (400, 11, 16, 14))
+        r.draw_text(f"x{self.total_kills}", 420, 10, color=(255, 150, 150), size=18)
 
         # Progress
         if self.total_bananas > 0:

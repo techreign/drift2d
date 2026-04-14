@@ -45,8 +45,11 @@ class AutoPlayer:
 
         player = self.game.world.find("player")
         if not player:
-            # On menu/gameover — press space to proceed
-            self._inject_key(pygame.K_SPACE, press=True)
+            # On menu/gameover — toggle space every 30 frames to trigger just_pressed
+            if self.game.frame_count % 30 < 15:
+                self._inject_key(pygame.K_SPACE, press=True)
+            else:
+                self._inject_key(pygame.K_SPACE, press=False)
             return
 
         transform = player.get(Transform)
@@ -108,11 +111,20 @@ class AutoPlayer:
             if wall_tile == "G":
                 should_jump = True  # Jump over wall
 
-        # If stuck for too long, try jumping or reversing
+        # If stuck for too long, escalate unstuck strategies
         if self._stuck_timer > 0.5:
             should_jump = True
         if self._stuck_timer > 1.5:
             self._direction *= -1
+            self._stuck_timer = 0
+        if self._stuck_timer > 3.0:
+            # Desperate: just jump and move toward the door
+            should_jump = True
+            door = self.game.world.find("door")
+            if door:
+                dt3 = door.get(Transform)
+                if dt3:
+                    move_dir = 1 if dt3.position.x > px else -1
             self._stuck_timer = 0
 
         # Check for enemies nearby — jump if close
@@ -148,12 +160,15 @@ class AutoPlayer:
             if closest_banana.position.y < py - 20:
                 should_jump = True
 
-        # Check for door — move toward it
+        # Always move toward the door (primary goal)
         door = self.game.world.find("door")
         if door:
             dt2 = door.get(Transform)
-            if dt2 and abs(dt2.position.x - px) < 300:
-                move_dir = 1 if dt2.position.x > px else -1
+            if dt2:
+                dx_door = dt2.position.x - px
+                # Always bias toward door direction
+                if abs(dx_door) > 30:
+                    move_dir = 1 if dx_door > 0 else -1
 
         # ── Inject inputs ──
 
