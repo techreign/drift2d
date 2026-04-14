@@ -366,26 +366,37 @@ class OverworldScene(Scene):
             self._try_interact()
             return
 
-        # Read currently held direction (is_action_pressed, not just_pressed)
+        # Check for just_pressed first (single tap = one tile, works for bot too)
         dx, dy = 0, 0
-        if inp.is_action_pressed("move_up"):
-            dy = -1
-        elif inp.is_action_pressed("move_down"):
-            dy = 1
-        elif inp.is_action_pressed("move_left"):
-            dx = -1
-        elif inp.is_action_pressed("move_right"):
-            dx = 1
+        just = False
+        if inp.is_action_just_pressed("move_up"):
+            dy, just = -1, True
+        elif inp.is_action_just_pressed("move_down"):
+            dy, just = 1, True
+        elif inp.is_action_just_pressed("move_left"):
+            dx, just = -1, True
+        elif inp.is_action_just_pressed("move_right"):
+            dx, just = 1, True
+
+        # Also check held keys for continuous movement
+        if not just:
+            if inp.is_action_pressed("move_up"):
+                dy = -1
+            elif inp.is_action_pressed("move_down"):
+                dy = 1
+            elif inp.is_action_pressed("move_left"):
+                dx = -1
+            elif inp.is_action_pressed("move_right"):
+                dx = 1
 
         if dx == 0 and dy == 0:
-            # No key held — reset held state
             self._held_dir = (0, 0)
             self._held_timer = 0.0
             return
 
         new_dir = (dx, dy)
 
-        # Update facing direction immediately
+        # Update facing direction
         if dy == -1:
             self._facing = "up"
         elif dy == 1:
@@ -395,22 +406,21 @@ class OverworldScene(Scene):
         elif dx == 1:
             self._facing = "right"
 
-        if new_dir != self._held_dir:
-            # New direction — move immediately and reset timer
+        if just:
+            # Single tap — move immediately, no repeat logic
+            self._held_dir = new_dir
+            self._held_timer = 0.0
+            self._try_move(dx, dy)
+        elif new_dir != self._held_dir:
+            # Changed held direction — move immediately
             self._held_dir = new_dir
             self._held_timer = 0.0
             self._try_move(dx, dy)
         else:
-            # Same direction held — check repeat timer
+            # Same direction held — repeat after delay
             self._held_timer += self.game.dt
-            threshold = (
-                self._held_initial_delay
-                if self._held_timer < self._held_initial_delay + self._held_repeat_rate
-                else self._held_repeat_rate
-            )
             if self._held_timer >= self._held_initial_delay:
                 self._try_move(dx, dy)
-                # Don't reset to 0 — just subtract the repeat interval
                 self._held_timer -= self._held_repeat_rate
 
     def _try_interact(self):

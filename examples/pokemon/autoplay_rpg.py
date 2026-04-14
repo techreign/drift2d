@@ -69,8 +69,8 @@ class RPGAutoPlayer:
         if self._move_cooldown > 0:
             return
 
-        # Check if sliding (don't input during slide)
-        if hasattr(scene, "_sliding") and scene._sliding:
+        # Don't input while player is mid-slide between tiles
+        if getattr(scene, "_moving", False):
             return
 
         # Detect if stuck
@@ -127,7 +127,9 @@ class RPGAutoPlayer:
             key = random.choices(directions, weights=[3, 3, 3, 1])[0]
 
         self._press(key)
-        self._move_cooldown = 0.2
+        self._move_cooldown = (
+            0.05  # short cooldown, _moving check prevents double-input
+        )
         self._steps_taken += 1
 
         # Occasionally try to interact (Z) for pokemon center etc.

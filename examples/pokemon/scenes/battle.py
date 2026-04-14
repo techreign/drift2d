@@ -1821,11 +1821,11 @@ class BattleScene(Scene):
             show_exp=False,
         )
 
-        # Player plate — bottom-right area
+        # Player plate — bottom-right area (plate is 290px wide, fits 640 window)
         self._draw_name_plate(
             screen,
-            x=400,
-            y=220,
+            x=340,
+            y=235,
             pokemon=self._player,
             hp_display=self._player_hp_display,
             show_hp_num=True,
@@ -1842,8 +1842,8 @@ class BattleScene(Scene):
         show_hp_num: bool,
         show_exp: bool = False,
     ):
-        plate_w = 290
-        plate_h = 105 if show_exp else 95
+        plate_w = 250
+        plate_h = 95 if show_exp else 85
 
         # Background panel with rounded corners
         panel_rect = pygame.Rect(x, y, plate_w, plate_h)
