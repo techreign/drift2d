@@ -1,0 +1,11 @@
+[game]
+title = "Jungle Kong"
+
+[window]
+width = 800
+height = 600
+fps = 60
+bg_color = [8, 20, 12]
+
+[physics]
+gravity = 1100.0
