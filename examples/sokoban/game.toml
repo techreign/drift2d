@@ -1,0 +1,11 @@
+[game]
+title = "Drift Sokoban"
+
+[window]
+width = 640
+height = 640
+fps = 60
+bg_color = [10, 12, 28]
+
+[physics]
+gravity = 0.0

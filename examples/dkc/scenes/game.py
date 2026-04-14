@@ -76,6 +76,12 @@ class GameScene(Scene):
         self.shake_intensity = 0.0
         self.scroll_x = 0.0
 
+        # Score system
+        self.score = 0
+        self.combo = 0  # consecutive aerial kills
+        self.combo_timer = 0.0  # resets when player touches ground
+        self.banana_flash_timer = 0.0  # > 0 means flash the banana count
+
         # Particles
         self.dust = ParticleEmitter(
             ParticleConfig(
@@ -222,7 +228,10 @@ class GameScene(Scene):
         self.on_ground = False
         self.dying = False
         self.level_complete = False
-        # Don't reset bananas — they carry over between levels
+        self.combo = 0
+        self.combo_timer = 0.0
+        self.banana_flash_timer = 0.0
+        # Don't reset bananas or score — they carry over between levels
 
     def _generate_background(self):
         """Create random background decoration positions."""
@@ -258,6 +267,7 @@ class GameScene(Scene):
                 next_scene = GameScene(self.level_num + 1)
                 next_scene.lives = self.lives
                 next_scene.bananas = self.bananas
+                next_scene.score = self.score
                 self.game.scenes.register(f"level_{self.level_num + 1}", next_scene)
                 self.game.scenes.switch(f"level_{self.level_num + 1}")
             return
@@ -274,6 +284,12 @@ class GameScene(Scene):
 
         self.barrel_cooldown = max(0, self.barrel_cooldown - dt)
         self.shake_timer = max(0, self.shake_timer - dt)
+        self.banana_flash_timer = max(0.0, self.banana_flash_timer - dt)
+        # Combo decays when player lands (handled below) or after 3s in air
+        if self.combo_timer > 0:
+            self.combo_timer -= dt
+            if self.combo_timer <= 0:
+                self.combo = 0
 
         player = self.game.world.find("player")
         if not player:
@@ -355,9 +371,11 @@ class GameScene(Scene):
                 transform.position.y = tile_rect.bottom + 14
                 rb.velocity.y = 0
 
-        # Landing dust
+        # Landing dust; also break aerial combo
         if self.on_ground and not self.was_on_ground:
             self.dust.emit(transform.position.x, transform.position.y + 14, count=5)
+            self.combo = 0
+            self.combo_timer = 0.0
 
         # Running dust
         if (
@@ -375,6 +393,8 @@ class GameScene(Scene):
             brect = Rect(bt.position.x - 7, bt.position.y - 7, 14, 14)
             if prect.overlaps(brect):
                 self.bananas += 1
+                self.score += 10
+                self.banana_flash_timer = 0.4
                 self.banana_pop.emit(bt.position.x, bt.position.y)
                 self.game.world.despawn(banana)
                 if self.game.dev:

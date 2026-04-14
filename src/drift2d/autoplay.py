@@ -25,10 +25,15 @@ class AutoPlayer:
         self.enabled = False
         self._jump_cooldown = 0.0
         self._stuck_timer = 0.0
+        self._vert_stuck_timer = 0.0
         self._last_x = 0.0
+        self._last_y = 0.0
         self._direction = 1  # 1 = right, -1 = left
         self._jump_requested = False
         self._frames_since_ground = 0
+        # Random jump variation: offset in [-0.15, +0.15] seconds, changes periodically
+        self._jump_variation = 0.0
+        self._jump_variation_timer = 0.0
 
     def enable(self):
         self.enabled = True
@@ -61,12 +66,27 @@ class AutoPlayer:
         vx = rb.velocity.x if rb else 0
         vy = rb.velocity.y if rb else 0
 
-        # Detect if stuck
+        # Detect if stuck horizontally
         if abs(px - self._last_x) < 2.0:
             self._stuck_timer += dt
         else:
             self._stuck_timer = 0.0
         self._last_x = px
+
+        # Detect if stuck vertically (not moving up or down for 2s)
+        if abs(py - self._last_y) < 2.0:
+            self._vert_stuck_timer += dt
+        else:
+            self._vert_stuck_timer = 0.0
+        self._last_y = py
+
+        # Randomize jump timing variation periodically so the bot isn't robotic
+        self._jump_variation_timer -= dt
+        if self._jump_variation_timer <= 0:
+            import random as _rnd
+
+            self._jump_variation = _rnd.uniform(-0.12, 0.12)
+            self._jump_variation_timer = _rnd.uniform(0.8, 2.0)
 
         # Track air time
         on_ground = vy == 0 or abs(vy) < 5
@@ -111,7 +131,7 @@ class AutoPlayer:
             if wall_tile == "G":
                 should_jump = True  # Jump over wall
 
-        # If stuck for too long, escalate unstuck strategies
+        # If stuck horizontally for too long, escalate unstuck strategies
         if self._stuck_timer > 0.5:
             should_jump = True
         if self._stuck_timer > 1.5:
@@ -127,6 +147,11 @@ class AutoPlayer:
                     move_dir = 1 if dt3.position.x > px else -1
             self._stuck_timer = 0
 
+        # If stuck vertically (not gaining/losing height) for 2s, try jumping
+        if self._vert_stuck_timer > 2.0 and on_ground:
+            should_jump = True
+            self._vert_stuck_timer = 0.0
+
         # Check for enemies nearby — jump if close
         for enemy in self.game.world.query_tag("enemy"):
             et = enemy.get(Transform)
@@ -140,6 +165,45 @@ class AutoPlayer:
                         move_dir = 1
                     else:
                         move_dir = -1
+
+        # Check for barrels nearby — move toward them and jump into them
+        for barrel in self.game.world.query_tag("barrel"):
+            bt = barrel.get(Transform)
+            if bt:
+                bdx = bt.position.x - px
+                bdy = bt.position.y - py
+                if abs(bdx) < 120 and abs(bdy) < 80:
+                    # Move toward the barrel
+                    if bdx > 10:
+                        move_dir = 1
+                    elif bdx < -10:
+                        move_dir = -1
+                    # Jump into it if close and on ground
+                    if abs(bdx) < 50 and on_ground:
+                        should_jump = True
+
+        # If falling fast, steer toward nearest platform below
+        if vy > 200:
+            best_platform_x = None
+            best_dist = 999999
+            if tilemap:
+                ts = tilemap.tile_size
+                look_rows = range(int(py // ts), min(int(py // ts) + 8, tilemap.height))
+                for r in look_rows:
+                    for c in range(
+                        max(0, int(px // ts) - 6), min(tilemap.width, int(px // ts) + 6)
+                    ):
+                        if tilemap.get_tile(c, r) == "G":
+                            tile_cx = c * ts + ts / 2
+                            dist = abs(tile_cx - px)
+                            if dist < best_dist:
+                                best_dist = dist
+                                best_platform_x = tile_cx
+            if best_platform_x is not None:
+                if best_platform_x > px + 8:
+                    move_dir = 1
+                elif best_platform_x < px - 8:
+                    move_dir = -1
 
         # Check for bananas nearby — move toward them
         closest_banana = None
@@ -180,8 +244,9 @@ class AutoPlayer:
             self._inject_key(pygame.K_LEFT, press=True)
             self._inject_key(pygame.K_RIGHT, press=False)
 
-        # Jump
-        if should_jump and self._jump_cooldown <= 0 and on_ground:
+        # Jump — apply random variation so the bot isn't frame-perfect every time
+        effective_cooldown = max(0.0, self._jump_cooldown + self._jump_variation)
+        if should_jump and effective_cooldown <= 0 and on_ground:
             self._inject_key(pygame.K_SPACE, press=True)
             self._jump_cooldown = 0.4
         elif not should_jump or not on_ground:
