@@ -13,6 +13,13 @@ from scenes.victory import VictoryScene
 
 game = Game.from_project(".")
 
+# Enable dev loop — Claude watches the game live
+game.enable_dev(
+    output_dir=".drift-dev",
+    screenshot_interval=3.0,
+    watch_dirs=["scenes"],
+)
+
 # Register persistent scenes
 game.scenes.register("menu", MenuScene())
 game.scenes.register("gameover", GameOverScene())

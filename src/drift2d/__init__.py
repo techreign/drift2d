@@ -35,6 +35,7 @@ from .loader import load_entity, load_entities, entity_from_yaml, register_compo
 from .tilemap import Tilemap, TileDef
 from .particles import ParticleEmitter, ParticleConfig
 from .animation import update_animations, play_animation
+from .devloop import DevLoop, DevState
 
 __version__ = "0.1.0"
 
@@ -71,6 +72,9 @@ __all__ = [
     "load_entities",
     "entity_from_yaml",
     "register_component",
+    # Dev Loop
+    "DevLoop",
+    "DevState",
     # Utils
     "Vec2",
     "Rect",

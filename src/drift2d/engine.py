@@ -55,6 +55,7 @@ class Game:
         self.pixel_perfect = pixel_perfect
         self.running = False
         self.debug = False
+        self.dev: "DevLoop | None" = None  # set via enable_dev()
 
         # Core systems
         self.screen = pygame.display.set_mode((width, height))
@@ -110,6 +111,21 @@ class Game:
 
         return game
 
+    def enable_dev(
+        self,
+        output_dir: str = ".drift-dev",
+        screenshot_interval: float = 3.0,
+        watch_dirs: list[str] | None = None,
+    ):
+        """Enable the dev loop — Claude watches the game live."""
+        from .devloop import DevLoop
+
+        self.dev = DevLoop(self, output_dir=output_dir)
+        self.dev.screenshot_interval = screenshot_interval
+        if watch_dirs:
+            for d in watch_dirs:
+                self.dev.watch_directory(Path(d))
+
     def run(self, start_scene: str | None = None):
         """Start the game loop."""
         if start_scene:
@@ -162,6 +178,10 @@ class Game:
             # Debug overlay
             if self.debug:
                 self._draw_debug()
+
+            # Dev loop (screenshots, state dump, hot reload)
+            if self.dev:
+                self.dev.update(self.dt)
 
             pygame.display.flip()
 

@@ -369,6 +369,8 @@ class GameScene(Scene):
                 self.bananas += 1
                 self.banana_pop.emit(bt.position.x, bt.position.y)
                 self.game.world.despawn(banana)
+                if self.game.dev:
+                    self.game.dev.log_collectible()
                 # Extra life every 50 bananas
                 if self.bananas % 50 == 0:
                     self.lives += 1
@@ -382,10 +384,12 @@ class GameScene(Scene):
                     self.stomp_burst.emit(et.position.x, et.position.y)
                     self.game.world.despawn(enemy)
                     rb.velocity.y = -300  # bounce off enemy
+                    if self.game.dev:
+                        self.game.dev.log_enemy_kill()
                     self.shake_timer = 0.15
                     self.shake_intensity = 3.0
                 else:
-                    self._die(transform)
+                    self._die(transform, cause="enemy_contact")
 
         for barrel in self.game.world.query_tag("barrel"):
             bt = barrel.get(Transform)
@@ -435,7 +439,7 @@ class GameScene(Scene):
 
         # ── Fall death ──
         if transform.position.y > self.tilemap.height * 32 + 100:
-            self._die(transform)
+            self._die(transform, cause="fell_off_map")
 
         # ── Update particles ──
         self.dust.update(dt)
@@ -446,12 +450,15 @@ class GameScene(Scene):
     def _player_rect(self, transform: Transform) -> Rect:
         return Rect(transform.position.x - 10, transform.position.y - 14, 20, 28)
 
-    def _die(self, transform):
+    def _die(self, transform, cause: str = "unknown"):
         self.dying = True
         self.death_timer = 1.0
         self.stomp_burst.emit(transform.position.x, transform.position.y, count=20)
         self.shake_timer = 0.3
         self.shake_intensity = 8.0
+        # Log to dev loop
+        if self.game.dev:
+            self.game.dev.log_death(transform.position.x, transform.position.y, cause)
 
     def draw(self):
         screen = self.game.screen
