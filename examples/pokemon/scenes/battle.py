@@ -33,21 +33,21 @@ class State(Enum):
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
-W, H = 800, 600
+W, H = 640, 480
 
-# Layout
-ENEMY_CENTER = (560, 160)  # enemy pokemon circle center
-PLAYER_CENTER = (240, 360)  # player pokemon circle center
-ENEMY_RADIUS = 55
-PLAYER_RADIUS = 70
+# Layout — scaled to fit 640x480
+ENEMY_CENTER = (480, 110)  # enemy pokemon circle center
+PLAYER_CENTER = (160, 260)  # player pokemon circle center
+ENEMY_RADIUS = 45
+PLAYER_RADIUS = 55
 
 # Menu box
-MENU_BOX_RECT = pygame.Rect(0, 430, 800, 170)
-MSG_BOX_RECT = pygame.Rect(0, 430, 800, 170)
+MENU_BOX_RECT = pygame.Rect(0, 360, 640, 120)
+MSG_BOX_RECT = pygame.Rect(0, 360, 640, 120)
 
 # HP bar geometry for each side
-ENEMY_HP_RECT = pygame.Rect(30, 60, 240, 14)
-PLAYER_HP_RECT = pygame.Rect(530, 330, 240, 14)
+ENEMY_HP_RECT = pygame.Rect(20, 40, 200, 12)
+PLAYER_HP_RECT = pygame.Rect(410, 250, 200, 12)
 
 # Colors
 COL_BG_TOP = (144, 200, 128)
@@ -1353,18 +1353,18 @@ class BattleScene(Scene):
                     return
                 # Second drain after XP messages — go back to overworld
                 self._state = State.CHOOSE_ACTION  # placeholder
-                self.game.scenes.switch("overworld")  # type: ignore[union-attr]
+                self.game.scenes.pop()  # type: ignore[union-attr]
                 return
 
             if target == State.DEFEAT:
                 if getattr(self, "_defeat_shown", False):
-                    self.game.scenes.switch("overworld")  # type: ignore[union-attr]
+                    self.game.scenes.pop()  # type: ignore[union-attr]
                     return
 
             # Special: RUN exit
             if self._post_messages and self._post_messages[0] == "__EXIT__":
                 self._post_messages.pop(0)
-                self.game.scenes.switch("overworld")  # type: ignore[union-attr]
+                self.game.scenes.pop()  # type: ignore[union-attr]
                 return
 
             self._state = target
@@ -1824,8 +1824,8 @@ class BattleScene(Scene):
         # Player plate — bottom-right area
         self._draw_name_plate(
             screen,
-            x=480,
-            y=290,
+            x=400,
+            y=220,
             pokemon=self._player,
             hp_display=self._player_hp_display,
             show_hp_num=True,
@@ -2024,9 +2024,9 @@ class BattleScene(Scene):
 
         # Right side: 2x2 grid of action buttons
         font_btn = self._font(22)
-        btn_w, btn_h = 156, 62
-        start_x = MENU_BOX_RECT.x + 440
-        start_y = MENU_BOX_RECT.y + 14
+        btn_w, btn_h = 130, 50
+        start_x = MENU_BOX_RECT.x + 330
+        start_y = MENU_BOX_RECT.y + 10
 
         for i, label in enumerate(ACTION_LABELS):
             col_i = i % 2

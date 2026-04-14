@@ -237,6 +237,12 @@ class OverworldScene(Scene):
         self._bob_phase: float = 0.0  # oscillates while moving
         self._step_count: int = 0
 
+        # Held-key movement: initial delay then repeat (like real Pokemon)
+        self._held_dir: tuple[int, int] = (0, 0)
+        self._held_timer: float = 0.0
+        self._held_initial_delay: float = 0.12  # seconds before first repeat
+        self._held_repeat_rate: float = 0.08  # seconds between repeats after initial
+
         # Global time accumulator (drives animations)
         self._time: float = 0.0
 
@@ -341,7 +347,6 @@ class OverworldScene(Scene):
 
     def _handle_input(self):
         if self._in_dialog:
-            # Any key clears dialog state (banner still visible but movement re-enabled)
             inp = self.game.input
             if (
                 inp.is_action_just_pressed("action")
@@ -355,28 +360,58 @@ class OverworldScene(Scene):
             return
 
         inp = self.game.input
-        dx, dy = 0, 0
 
         # Check action key for NPC interaction
         if inp.is_action_just_pressed("action"):
             self._try_interact()
             return
 
-        if inp.is_action_just_pressed("move_up"):
+        # Read currently held direction (is_action_pressed, not just_pressed)
+        dx, dy = 0, 0
+        if inp.is_action_pressed("move_up"):
             dy = -1
-            self._facing = "up"
-        elif inp.is_action_just_pressed("move_down"):
+        elif inp.is_action_pressed("move_down"):
             dy = 1
-            self._facing = "down"
-        elif inp.is_action_just_pressed("move_left"):
+        elif inp.is_action_pressed("move_left"):
             dx = -1
-            self._facing = "left"
-        elif inp.is_action_just_pressed("move_right"):
+        elif inp.is_action_pressed("move_right"):
             dx = 1
+
+        if dx == 0 and dy == 0:
+            # No key held — reset held state
+            self._held_dir = (0, 0)
+            self._held_timer = 0.0
+            return
+
+        new_dir = (dx, dy)
+
+        # Update facing direction immediately
+        if dy == -1:
+            self._facing = "up"
+        elif dy == 1:
+            self._facing = "down"
+        elif dx == -1:
+            self._facing = "left"
+        elif dx == 1:
             self._facing = "right"
 
-        if dx != 0 or dy != 0:
+        if new_dir != self._held_dir:
+            # New direction — move immediately and reset timer
+            self._held_dir = new_dir
+            self._held_timer = 0.0
             self._try_move(dx, dy)
+        else:
+            # Same direction held — check repeat timer
+            self._held_timer += self.game.dt
+            threshold = (
+                self._held_initial_delay
+                if self._held_timer < self._held_initial_delay + self._held_repeat_rate
+                else self._held_repeat_rate
+            )
+            if self._held_timer >= self._held_initial_delay:
+                self._try_move(dx, dy)
+                # Don't reset to 0 — just subtract the repeat interval
+                self._held_timer -= self._held_repeat_rate
 
     def _try_interact(self):
         """Check if facing an NPC and trigger dialog."""
