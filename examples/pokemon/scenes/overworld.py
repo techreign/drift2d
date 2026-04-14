@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 from pathlib import Path
 
@@ -38,25 +39,51 @@ ENCOUNTERS: dict[str, list[tuple[str, tuple[int, int]]]] = {
 }
 
 # Tile visual colours
-COLOR_WALL = (80, 80, 80)
-COLOR_FLOOR = (210, 200, 170)
-COLOR_GRASS = (60, 160, 60)
-COLOR_GRASS_D = (40, 120, 40)  # darker spots on grass
+COLOR_WALL = (60, 60, 70)
+COLOR_WALL_HIGHLIGHT = (100, 100, 110)
+COLOR_FLOOR = (205, 188, 152)
+COLOR_FLOOR_GRID = (185, 170, 136)
+COLOR_GRASS = (34, 139, 34)
+COLOR_GRASS_DARK = (22, 100, 22)
+COLOR_GRASS_BLADE = (50, 180, 50)
 COLOR_HOUSE = (139, 90, 43)
-COLOR_CENTER = (220, 50, 50)
-COLOR_CROSS = (255, 255, 255)
-COLOR_EXIT = (200, 200, 80)
+COLOR_HOUSE_ROOF = (90, 50, 20)
+COLOR_HOUSE_WINDOW = (255, 230, 100)
+COLOR_HOUSE_DOOR = (70, 35, 10)
+COLOR_CENTER_BASE = (240, 240, 255)
+COLOR_CENTER_ROOF = (210, 40, 40)
+COLOR_CENTER_CROSS = (255, 255, 255)
+COLOR_EXIT = (255, 230, 0)
 COLOR_TRAINER = (100, 100, 200)
 
 # Player colours
-COLOR_PLAYER = (50, 100, 220)
-COLOR_PLAYER_EYE = (255, 255, 255)
-COLOR_PLAYER_IRIS = (0, 0, 0)
+COLOR_JACKET_DOWN = (60, 100, 200)
+COLOR_JACKET_UP = (50, 80, 180)
+COLOR_JACKET_LEFT = (40, 90, 190)
+COLOR_JACKET_RIGHT = (70, 110, 210)
+COLOR_SKIN = (240, 195, 145)
+COLOR_HAIR = (50, 30, 10)
+COLOR_PLAYER_EYE = (30, 30, 80)
+COLOR_PANTS = (40, 40, 120)
+COLOR_SHOES = (30, 20, 10)
 
 # UI colours
 COLOR_UI_BG = (0, 0, 0, 160)
 COLOR_HP_GOOD = (80, 200, 80)
-COLOR_HP_LOW = (200, 80, 80)
+COLOR_HP_MID = (230, 200, 40)
+COLOR_HP_LOW = (220, 60, 60)
+COLOR_HP_BORDER = (20, 20, 20)
+
+# Prof NPC
+PROF_NPC_COL = 14
+PROF_NPC_ROW = 3
+PROF_NPC_MAP = "town"
+PROF_DIALOG = "Welcome to the world of Pokemon!\nGo explore Route 1!"
+
+# Flash/fade effect types
+_FLASH_WHITE = "white"
+_FLASH_PINK = "pink"
+_FADE_BLACK = "black"
 
 # ---------------------------------------------------------------------------
 # Tile definitions
@@ -67,7 +94,7 @@ TILE_DEFS: dict[str, TileDef] = {
     ".": TileDef(".", COLOR_FLOOR, solid=False, tag="floor"),
     "G": TileDef("G", COLOR_GRASS, solid=False, tag="grass"),
     "H": TileDef("H", COLOR_HOUSE, solid=True, tag="house"),
-    "C": TileDef("C", COLOR_CENTER, solid=False, tag="center"),
+    "C": TileDef("C", COLOR_CENTER_BASE, solid=False, tag="center"),
     "P": TileDef("P", COLOR_FLOOR, solid=False, tag="spawn"),
     "T": TileDef("T", COLOR_FLOOR, solid=False, tag="trainer"),
     ">": TileDef(">", COLOR_EXIT, solid=False, tag="exit_right"),
@@ -99,6 +126,23 @@ def _find_spawn(tm: Tilemap, char: str) -> tuple[int, int] | None:
     return hits[0] if hits else None
 
 
+def _pokemon_dot_color(name: str) -> tuple[int, int, int]:
+    """Return a simple color to represent a pokemon species."""
+    colors = {
+        "charmander": (255, 100, 30),
+        "squirtle": (60, 120, 220),
+        "bulbasaur": (80, 180, 80),
+        "pikachu": (255, 220, 0),
+        "rattata": (160, 100, 140),
+        "pidgey": (180, 150, 100),
+        "caterpie": (60, 160, 60),
+        "nidoran": (160, 80, 180),
+        "geodude": (140, 120, 100),
+        "zubat": (100, 80, 160),
+    }
+    return colors.get(name.lower(), (150, 150, 200))
+
+
 # ---------------------------------------------------------------------------
 # Notification banner
 # ---------------------------------------------------------------------------
@@ -127,12 +171,20 @@ class _Banner:
         if not self.visible:
             return
         sw, sh = screen.get_size()
-        box_h = 44
+        box_h = 50
         box = pygame.Surface((sw, box_h), pygame.SRCALPHA)
-        box.fill((0, 0, 0, 180))
+        # Gradient-ish: darker at top of box
+        for i in range(box_h):
+            alpha = int(160 + (i / box_h) * 40)
+            pygame.draw.line(box, (0, 0, 0, alpha), (0, i), (sw, i))
         screen.blit(box, (0, sh - box_h))
-        surf = font.render(self.text, True, (255, 255, 255))
-        screen.blit(surf, (12, sh - box_h + 10))
+        # White border line at top of banner
+        pygame.draw.line(screen, (255, 255, 255, 80), (0, sh - box_h), (sw, sh - box_h))
+        # Split multi-line text (for Prof dialog)
+        lines = self.text.split("\n")
+        for i, line in enumerate(lines):
+            surf = font.render(line, True, (255, 255, 255))
+            screen.blit(surf, (14, sh - box_h + 8 + i * 18))
 
 
 # ---------------------------------------------------------------------------
@@ -180,10 +232,34 @@ class OverworldScene(Scene):
         self._slide_start_px: float = 0.0
         self._slide_start_py: float = 0.0
 
+        # Player visual state
+        self._facing: str = "down"  # "up" | "down" | "left" | "right"
+        self._bob_phase: float = 0.0  # oscillates while moving
+        self._step_count: int = 0
+
+        # Global time accumulator (drives animations)
+        self._time: float = 0.0
+
+        # Grass rustle: set of (col, row) with rustle_timer
+        self._rustle_tiles: dict[tuple[int, int], float] = {}
+
+        # Screen flash / fade overlay
+        self._overlay_color: tuple[int, int, int] = (0, 0, 0)
+        self._overlay_alpha: float = 0.0  # 0..255
+        self._overlay_dir: int = 0  # -1 fade out, +1 fade in, 0 idle
+        self._overlay_speed: float = 400.0  # alpha units per second
+
+        # Battle flash: brief white/pink before fade
+        self._flash_timer: float = 0.0
+        self._flash_color: tuple[int, int, int] = (255, 255, 255)
+        self._pending_battle_wild: Pokemon | None = None
+        self._pending_map_transition: str | None = None  # "left" | "right"
+
         # UI
         self._banner = _Banner()
         self._font_small: pygame.font.Font | None = None
         self._font_med: pygame.font.Font | None = None
+        self._font_tiny: pygame.font.Font | None = None
 
         # Suppress repeated encounters while message is shown
         self._in_dialog: bool = False
@@ -195,6 +271,7 @@ class OverworldScene(Scene):
     def enter(self):
         self._font_small = pygame.font.SysFont(None, 20)
         self._font_med = pygame.font.SysFont(None, 26)
+        self._font_tiny = pygame.font.SysFont(None, 16)
 
         # Pre-load all maps
         for name in MAP_ORDER:
@@ -212,11 +289,50 @@ class OverworldScene(Scene):
     # ------------------------------------------------------------------
 
     def update(self, dt: float):
+        self._time += dt
         self._banner.update(dt)
 
+        # Advance rustle timers
+        expired = [k for k, v in self._rustle_tiles.items() if v <= 0]
+        for k in expired:
+            del self._rustle_tiles[k]
+        for k in list(self._rustle_tiles):
+            self._rustle_tiles[k] -= dt
+
+        # Flash timer (white/pink flash before battle)
+        if self._flash_timer > 0:
+            self._flash_timer -= dt
+            if self._flash_timer <= 0:
+                self._flash_timer = 0.0
+                # Now start fade to black
+                if (
+                    self._pending_battle_wild is not None
+                    or self._pending_map_transition is not None
+                ):
+                    self._overlay_color = (0, 0, 0)
+                    self._overlay_alpha = 0.0
+                    self._overlay_dir = 1  # fade in (darken)
+            return  # hold input during flash
+
+        # Overlay fade
+        if self._overlay_dir != 0:
+            self._overlay_alpha += self._overlay_dir * self._overlay_speed * dt
+            if self._overlay_dir == 1 and self._overlay_alpha >= 255:
+                self._overlay_alpha = 255.0
+                self._overlay_dir = 0
+                # Execute the deferred action
+                self._execute_deferred_transition()
+            elif self._overlay_dir == -1 and self._overlay_alpha <= 0:
+                self._overlay_alpha = 0.0
+                self._overlay_dir = 0
+            return  # hold input during fade
+
+        # Bob animation while moving
         if self._moving:
+            self._bob_phase += dt * 20.0
             self._update_slide(dt)
         else:
+            self._bob_phase = 0.0
             self._handle_input()
 
     # ------------------------------------------------------------------
@@ -240,17 +356,40 @@ class OverworldScene(Scene):
 
         inp = self.game.input
         dx, dy = 0, 0
+
+        # Check action key for NPC interaction
+        if inp.is_action_just_pressed("action"):
+            self._try_interact()
+            return
+
         if inp.is_action_just_pressed("move_up"):
             dy = -1
+            self._facing = "up"
         elif inp.is_action_just_pressed("move_down"):
             dy = 1
+            self._facing = "down"
         elif inp.is_action_just_pressed("move_left"):
             dx = -1
+            self._facing = "left"
         elif inp.is_action_just_pressed("move_right"):
             dx = 1
+            self._facing = "right"
 
         if dx != 0 or dy != 0:
             self._try_move(dx, dy)
+
+    def _try_interact(self):
+        """Check if facing an NPC and trigger dialog."""
+        if self.current_map != PROF_NPC_MAP:
+            return
+        # Face-direction offset
+        offsets = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+        dxo, dyo = offsets.get(self._facing, (0, 1))
+        target_col = self._player_col + dxo
+        target_row = self._player_row + dyo
+        if target_col == PROF_NPC_COL and target_row == PROF_NPC_ROW:
+            self._banner.show(PROF_DIALOG, duration=4.0)
+            self._in_dialog = True
 
     def _update_slide(self, dt: float):
         self._move_timer += dt
@@ -270,6 +409,7 @@ class OverworldScene(Scene):
 
     def _on_arrive(self):
         """Called when the player finishes sliding to the new tile."""
+        self._step_count += 1
         tm = self.maps[self.current_map]
         tile = tm.get_tile(self._player_col, self._player_row)
         if tile is None:
@@ -278,6 +418,8 @@ class OverworldScene(Scene):
         tag = TILE_DEFS[tile].tag if tile in TILE_DEFS else ""
 
         if tag == "grass":
+            # Register rustle visual effect
+            self._rustle_tiles[(self._player_col, self._player_row)] = 0.4
             self._check_encounter()
         elif tag == "center":
             self._heal_party()
@@ -295,7 +437,13 @@ class OverworldScene(Scene):
         if random.random() < ENCOUNTER_CHANCE:
             species, lvl_range = random.choice(table)
             wild = make_wild(species, lvl_range)
-            self._start_wild_battle(wild)
+            self._trigger_battle_flash(wild)
+
+    def _trigger_battle_flash(self, wild: Pokemon):
+        """White flash then fade to black before launching battle."""
+        self._pending_battle_wild = wild
+        self._flash_color = (255, 255, 255)
+        self._flash_timer = 0.12
 
     def _start_wild_battle(self, wild: Pokemon):
         scenes = self.game.scenes
@@ -323,6 +471,24 @@ class OverworldScene(Scene):
         battle.trainer = True
         scenes.push("battle")
 
+    def _execute_deferred_transition(self):
+        """Run the pending action after fade-to-black completes."""
+        if self._pending_battle_wild is not None:
+            wild = self._pending_battle_wild
+            self._pending_battle_wild = None
+            self._start_wild_battle(wild)
+            # Fade back in
+            self._overlay_dir = -1
+        elif self._pending_map_transition is not None:
+            direction = self._pending_map_transition
+            self._pending_map_transition = None
+            if direction == "right":
+                self._do_transition_right()
+            else:
+                self._do_transition_left()
+            # Fade back in
+            self._overlay_dir = -1
+
     # ------------------------------------------------------------------
     # Pokemon center
     # ------------------------------------------------------------------
@@ -330,7 +496,10 @@ class OverworldScene(Scene):
     def _heal_party(self):
         for p in self.party:
             p.heal()
-        self._banner.show("Your Pokemon have been healed!")
+        # Brief pink flash + banner
+        self._flash_color = (255, 180, 210)
+        self._flash_timer = 0.25
+        self._banner.show("Your Pokemon have been healed!", duration=3.0)
         self._in_dialog = True
 
     # ------------------------------------------------------------------
@@ -343,6 +512,14 @@ class OverworldScene(Scene):
             self._banner.show("No more routes this way!")
             self._in_dialog = True
             return
+        # Trigger fade-out, then do transition
+        self._pending_map_transition = "right"
+        self._overlay_color = (0, 0, 0)
+        self._overlay_alpha = 0.0
+        self._overlay_dir = 1
+
+    def _do_transition_right(self):
+        idx = MAP_ORDER.index(self.current_map)
         next_map = MAP_ORDER[idx + 1]
         self.current_map = next_map
         self._spawn_on_map(next_map, from_direction="left")
@@ -353,6 +530,13 @@ class OverworldScene(Scene):
             self._banner.show("Can't go back here!")
             self._in_dialog = True
             return
+        self._pending_map_transition = "left"
+        self._overlay_color = (0, 0, 0)
+        self._overlay_alpha = 0.0
+        self._overlay_dir = 1
+
+    def _do_transition_left(self):
+        idx = MAP_ORDER.index(self.current_map)
         prev_map = MAP_ORDER[idx - 1]
         self.current_map = prev_map
         self._spawn_on_map(prev_map, from_direction="right")
@@ -395,6 +579,7 @@ class OverworldScene(Scene):
         self._slide_start_px = self._player_px
         self._slide_start_py = self._player_py
         self._moving = False
+        self._rustle_tiles.clear()
 
     # ------------------------------------------------------------------
     # Drawing
@@ -417,6 +602,10 @@ class OverworldScene(Scene):
         # Draw map tiles
         self._draw_tilemap(screen, tm, cam_x, cam_y)
 
+        # Draw Prof NPC if on the right map
+        if self.current_map == PROF_NPC_MAP:
+            self._draw_prof_npc(screen, cam_x, cam_y)
+
         # Draw player
         self._draw_player(screen, cam_x, cam_y)
 
@@ -425,6 +614,20 @@ class OverworldScene(Scene):
 
         # Banner notification
         self._banner.draw(screen, self._font_med)
+
+        # Flash overlay (white/pink)
+        if self._flash_timer > 0:
+            flash_surf = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            alpha = int(200 * (self._flash_timer / 0.25))
+            alpha = max(0, min(255, alpha))
+            flash_surf.fill((*self._flash_color, alpha))
+            screen.blit(flash_surf, (0, 0))
+
+        # Fade overlay (black)
+        if self._overlay_alpha > 0:
+            fade_surf = pygame.Surface((sw, sh), pygame.SRCALPHA)
+            fade_surf.fill((0, 0, 0, int(self._overlay_alpha)))
+            screen.blit(fade_surf, (0, 0))
 
     def _draw_tilemap(
         self, screen: pygame.Surface, tm: Tilemap, cam_x: float, cam_y: float
@@ -444,160 +647,425 @@ class OverworldScene(Scene):
                 sx = int(col * TILE - cam_x)
                 sy = int(row * TILE - cam_y)
                 rect = pygame.Rect(sx, sy, TILE, TILE)
-                self._draw_tile(screen, tile, rect)
+                rustled = (col, row) in self._rustle_tiles
+                self._draw_tile(screen, tile, rect, col, row, rustled)
 
-    def _draw_tile(self, screen: pygame.Surface, tile: str, rect: pygame.Rect):
+    def _draw_tile(
+        self,
+        screen: pygame.Surface,
+        tile: str,
+        rect: pygame.Rect,
+        col: int,
+        row: int,
+        rustled: bool = False,
+    ):
+        t = self._time
+
         if tile == "W":
-            pygame.draw.rect(screen, COLOR_WALL, rect)
-            # Subtle inner shadow
-            pygame.draw.rect(screen, (60, 60, 60), rect, 2)
+            # Dark stone base with slight variation per tile
+            shade = (col * 7 + row * 13) % 20
+            base = (
+                max(0, COLOR_WALL[0] - shade),
+                max(0, COLOR_WALL[1] - shade),
+                max(0, COLOR_WALL[2] - shade + 5),
+            )
+            pygame.draw.rect(screen, base, rect)
+            # 3D top highlight edge
+            pygame.draw.line(
+                screen, COLOR_WALL_HIGHLIGHT, rect.topleft, rect.topright, 2
+            )
+            pygame.draw.line(
+                screen, COLOR_WALL_HIGHLIGHT, rect.topleft, (rect.left, rect.top + 4), 1
+            )
+            # Dark bottom/right shadow
+            pygame.draw.line(screen, (30, 30, 35), rect.bottomleft, rect.bottomright, 1)
+            pygame.draw.line(screen, (30, 30, 35), rect.topright, rect.bottomright, 1)
 
-        elif tile in (".", "P", "T", ">", "<"):
+        elif tile in (".", "P", "T"):
+            # Tan/beige floor with subtle tile grid lines
             pygame.draw.rect(screen, COLOR_FLOOR, rect)
-            if tile == ">":
-                pygame.draw.polygon(
-                    screen,
-                    COLOR_EXIT,
-                    [
-                        (rect.left + 8, rect.top + 8),
-                        (rect.right - 6, rect.centery),
-                        (rect.left + 8, rect.bottom - 8),
-                    ],
-                )
-            elif tile == "<":
-                pygame.draw.polygon(
-                    screen,
-                    COLOR_EXIT,
-                    [
-                        (rect.right - 8, rect.top + 8),
-                        (rect.left + 6, rect.centery),
-                        (rect.right - 8, rect.bottom - 8),
-                    ],
-                )
-            elif tile == "T":
-                # Trainer marker: small colored figure
+            pygame.draw.line(
+                screen, COLOR_FLOOR_GRID, rect.topright, rect.bottomright, 1
+            )
+            pygame.draw.line(
+                screen, COLOR_FLOOR_GRID, rect.bottomleft, rect.bottomright, 1
+            )
+
+            if tile == "T":
+                # Trainer marker: small colored figure on floor
                 pygame.draw.rect(
                     screen,
                     COLOR_TRAINER,
-                    pygame.Rect(rect.left + 8, rect.top + 6, 16, 20),
+                    pygame.Rect(rect.left + 9, rect.top + 8, 14, 18),
                 )
-                pygame.draw.circle(
-                    screen, (240, 200, 160), (rect.centerx, rect.top + 8), 7
+                pygame.draw.circle(screen, COLOR_SKIN, (rect.centerx, rect.top + 10), 6)
+
+        elif tile in (">", "<"):
+            # Floor base
+            pygame.draw.rect(screen, COLOR_FLOOR, rect)
+            pygame.draw.line(
+                screen, COLOR_FLOOR_GRID, rect.topright, rect.bottomright, 1
+            )
+            pygame.draw.line(
+                screen, COLOR_FLOOR_GRID, rect.bottomleft, rect.bottomright, 1
+            )
+            # Pulsing arrow brightness
+            pulse = int(200 + 55 * math.sin(t * 4.0))
+            arrow_col = (pulse, pulse, 0)
+            if tile == ">":
+                pygame.draw.polygon(
+                    screen,
+                    arrow_col,
+                    [
+                        (rect.left + 7, rect.top + 8),
+                        (rect.right - 5, rect.centery),
+                        (rect.left + 7, rect.bottom - 8),
+                    ],
+                )
+                # Arrow border
+                pygame.draw.polygon(
+                    screen,
+                    (120, 100, 0),
+                    [
+                        (rect.left + 7, rect.top + 8),
+                        (rect.right - 5, rect.centery),
+                        (rect.left + 7, rect.bottom - 8),
+                    ],
+                    1,
+                )
+            else:
+                pygame.draw.polygon(
+                    screen,
+                    arrow_col,
+                    [
+                        (rect.right - 7, rect.top + 8),
+                        (rect.left + 5, rect.centery),
+                        (rect.right - 7, rect.bottom - 8),
+                    ],
+                )
+                pygame.draw.polygon(
+                    screen,
+                    (120, 100, 0),
+                    [
+                        (rect.right - 7, rect.top + 8),
+                        (rect.left + 5, rect.centery),
+                        (rect.right - 7, rect.bottom - 8),
+                    ],
+                    1,
                 )
 
         elif tile == "G":
+            # Vibrant green base with darker bottom strip
             pygame.draw.rect(screen, COLOR_GRASS, rect)
-            # Darker grass blades pattern
-            for ox, oy in [(4, 4), (14, 10), (22, 5), (8, 18), (20, 20), (2, 26)]:
-                if ox < TILE and oy < TILE:
-                    pygame.draw.rect(
-                        screen,
-                        COLOR_GRASS_D,
-                        pygame.Rect(rect.left + ox, rect.top + oy, 4, 8),
-                    )
+            pygame.draw.rect(
+                screen,
+                COLOR_GRASS_DARK,
+                pygame.Rect(rect.left, rect.bottom - 6, TILE, 6),
+            )
+
+            if rustled:
+                # Darker rustle patch
+                rustle_surf = pygame.Surface((TILE, TILE), pygame.SRCALPHA)
+                rustle_surf.fill((0, 0, 0, 60))
+                screen.blit(rustle_surf, rect.topleft)
+
+            # Animated grass blades (sin wave based on time + position)
+            blade_positions = [(5, 22), (12, 20), (19, 24), (26, 21), (9, 26), (22, 27)]
+            for bx, by in blade_positions:
+                # Phase offset per blade using position hash
+                phase = (col * 3 + row * 7 + bx) * 0.5
+                sway = math.sin(t * 2.5 + phase) * 2.0
+                bx_s = int(rect.left + bx + sway)
+                by_base = rect.top + by
+                pygame.draw.line(
+                    screen,
+                    COLOR_GRASS_BLADE,
+                    (bx_s, by_base + 6),
+                    (bx_s + int(sway), by_base),
+                    1,
+                )
 
         elif tile == "H":
+            # Brown house base
             pygame.draw.rect(screen, COLOR_HOUSE, rect)
-            # Roof hint
+            # Darker roof triangle
             pygame.draw.polygon(
                 screen,
-                (100, 60, 20),
+                COLOR_HOUSE_ROOF,
                 [
-                    (rect.left, rect.top + 12),
-                    (rect.centerx, rect.top + 2),
-                    (rect.right, rect.top + 12),
+                    (rect.left, rect.top + 14),
+                    (rect.centerx, rect.top),
+                    (rect.right, rect.top + 14),
                 ],
+            )
+            # Yellow window
+            pygame.draw.rect(
+                screen,
+                COLOR_HOUSE_WINDOW,
+                pygame.Rect(rect.left + 5, rect.top + 16, 8, 7),
+            )
+            pygame.draw.rect(
+                screen,
+                (200, 170, 60),
+                pygame.Rect(rect.left + 5, rect.top + 16, 8, 7),
+                1,
             )
             # Door
             pygame.draw.rect(
                 screen,
-                (60, 30, 10),
-                pygame.Rect(rect.centerx - 4, rect.bottom - 12, 8, 12),
+                COLOR_HOUSE_DOOR,
+                pygame.Rect(rect.centerx - 4, rect.bottom - 11, 8, 11),
+            )
+            # Door knob
+            pygame.draw.circle(
+                screen, (200, 160, 60), (rect.centerx + 2, rect.bottom - 6), 1
             )
 
         elif tile == "C":
-            pygame.draw.rect(screen, COLOR_CENTER, rect)
-            # White cross
-            cross_w = TILE // 5
-            cx, cy = rect.centerx, rect.centery
+            # White/pink Pokemon Center
+            pygame.draw.rect(screen, COLOR_CENTER_BASE, rect)
+            # Red roof
+            pygame.draw.polygon(
+                screen,
+                COLOR_CENTER_ROOF,
+                [
+                    (rect.left, rect.top + 13),
+                    (rect.centerx, rect.top + 1),
+                    (rect.right, rect.top + 13),
+                ],
+            )
+            # White cross (medical)
+            cross_w = 4
+            cx, cy = rect.centerx, rect.top + 20
             pygame.draw.rect(
                 screen,
-                COLOR_CROSS,
-                pygame.Rect(cx - cross_w // 2, cy - TILE // 3, cross_w, TILE * 2 // 3),
+                COLOR_CENTER_CROSS,
+                pygame.Rect(cx - cross_w // 2, cy - 5, cross_w, 10),
             )
             pygame.draw.rect(
                 screen,
-                COLOR_CROSS,
-                pygame.Rect(cx - TILE // 3, cy - cross_w // 2, TILE * 2 // 3, cross_w),
+                COLOR_CENTER_CROSS,
+                pygame.Rect(cx - 5, cy - cross_w // 2, 10, cross_w),
             )
+            # "PC" label tiny
+            if self._font_tiny:
+                pc_lbl = self._font_tiny.render("PC", True, (180, 40, 40))
+                screen.blit(pc_lbl, (rect.left + 2, rect.bottom - 13))
 
         else:
             # Unknown tile — floor colour
             pygame.draw.rect(screen, COLOR_FLOOR, rect)
 
+    def _draw_prof_npc(self, screen: pygame.Surface, cam_x: float, cam_y: float):
+        """Draw the Professor NPC as a circle-P figure."""
+        sx = int(PROF_NPC_COL * TILE - cam_x)
+        sy = int(PROF_NPC_ROW * TILE - cam_y)
+        # Only draw if on screen
+        sw, sh = screen.get_size()
+        if sx < -TILE or sy < -TILE or sx > sw or sy > sh:
+            return
+
+        cx = sx + TILE // 2
+        # Body (white lab coat)
+        pygame.draw.rect(screen, (240, 240, 240), pygame.Rect(sx + 9, sy + 14, 14, 16))
+        # Head
+        pygame.draw.circle(screen, COLOR_SKIN, (cx, sy + 10), 7)
+        # Hair (grey)
+        pygame.draw.arc(
+            screen,
+            (160, 160, 160),
+            pygame.Rect(cx - 7, sy + 3, 14, 10),
+            0,
+            math.pi,
+            3,
+        )
+        # Eyes
+        pygame.draw.circle(screen, (30, 30, 30), (cx - 3, sy + 10), 1)
+        pygame.draw.circle(screen, (30, 30, 30), (cx + 3, sy + 10), 1)
+        # "P" label badge above head
+        pygame.draw.circle(screen, (80, 120, 200), (cx, sy - 4), 6)
+        if self._font_tiny:
+            p_lbl = self._font_tiny.render("P", True, (255, 255, 255))
+            screen.blit(p_lbl, (cx - p_lbl.get_width() // 2, sy - 10))
+
     def _draw_player(self, screen: pygame.Surface, cam_x: float, cam_y: float):
         sx = int(self._player_px - cam_x)
         sy = int(self._player_py - cam_y)
-        body = pygame.Rect(sx + 4, sy + 4, TILE - 8, TILE - 8)
-        pygame.draw.rect(screen, COLOR_PLAYER, body, border_radius=4)
-        # Eyes
-        eye_y = sy + 10
-        for ex in (sx + 9, sx + 18):
-            pygame.draw.circle(screen, COLOR_PLAYER_EYE, (ex, eye_y), 4)
-            pygame.draw.circle(screen, COLOR_PLAYER_IRIS, (ex, eye_y), 2)
+
+        # Bob offset while moving
+        bob = int(math.sin(self._bob_phase) * 1.5) if self._moving else 0
+
+        facing = self._facing
+        jacket_colors = {
+            "down": COLOR_JACKET_DOWN,
+            "up": COLOR_JACKET_UP,
+            "left": COLOR_JACKET_LEFT,
+            "right": COLOR_JACKET_RIGHT,
+        }
+        jacket_col = jacket_colors.get(facing, COLOR_JACKET_DOWN)
+
+        # Shoes
+        pygame.draw.rect(screen, COLOR_SHOES, pygame.Rect(sx + 8, sy + 26 + bob, 6, 4))
+        pygame.draw.rect(screen, COLOR_SHOES, pygame.Rect(sx + 18, sy + 26 + bob, 6, 4))
+
+        # Pants
+        pygame.draw.rect(screen, COLOR_PANTS, pygame.Rect(sx + 8, sy + 19 + bob, 16, 8))
+
+        # Jacket body
+        pygame.draw.rect(
+            screen,
+            jacket_col,
+            pygame.Rect(sx + 7, sy + 12 + bob, 18, 10),
+            border_radius=2,
+        )
+
+        # Arms (jacket color, slightly offset for left/right)
+        if facing == "left":
+            pygame.draw.rect(
+                screen, jacket_col, pygame.Rect(sx + 4, sy + 13 + bob, 5, 8)
+            )
+        elif facing == "right":
+            pygame.draw.rect(
+                screen, jacket_col, pygame.Rect(sx + 23, sy + 13 + bob, 5, 8)
+            )
+        else:
+            pygame.draw.rect(
+                screen, jacket_col, pygame.Rect(sx + 4, sy + 13 + bob, 4, 7)
+            )
+            pygame.draw.rect(
+                screen, jacket_col, pygame.Rect(sx + 24, sy + 13 + bob, 4, 7)
+            )
+
+        # Head (skin)
+        head_cx = sx + TILE // 2
+        head_cy = sy + 8 + bob
+        pygame.draw.circle(screen, COLOR_SKIN, (head_cx, head_cy), 7)
+
+        # Hair
+        pygame.draw.arc(
+            screen,
+            COLOR_HAIR,
+            pygame.Rect(head_cx - 7, head_cy - 7, 14, 10),
+            0,
+            math.pi,
+            3,
+        )
+
+        # Eyes based on facing direction
+        if facing == "down":
+            for ex in (head_cx - 3, head_cx + 3):
+                pygame.draw.circle(screen, COLOR_PLAYER_EYE, (ex, head_cy + 2), 1)
+        elif facing == "up":
+            # No visible eyes from back — just hair
+            pass
+        elif facing == "left":
+            pygame.draw.circle(screen, COLOR_PLAYER_EYE, (head_cx - 4, head_cy + 1), 1)
+        elif facing == "right":
+            pygame.draw.circle(screen, COLOR_PLAYER_EYE, (head_cx + 4, head_cy + 1), 1)
 
     def _draw_hud(self, screen: pygame.Surface):
-        sw, _ = screen.get_size()
+        sw, sh = screen.get_size()
 
-        # Map name — top-left
-        map_label = self.current_map.replace("route", "Route ").title()
+        # Top gradient bar
+        bar_h = 30
+        bar_surf = pygame.Surface((sw, bar_h), pygame.SRCALPHA)
+        for i in range(bar_h):
+            alpha = int(180 - i * 4)
+            alpha = max(0, alpha)
+            pygame.draw.line(bar_surf, (0, 0, 0, alpha), (0, i), (sw, i))
+        screen.blit(bar_surf, (0, 0))
+
+        # Map name badge — top-left
         if self._font_med:
+            map_label = self.current_map.replace("route", "Route ").title()
             lbl = self._font_med.render(map_label, True, (255, 255, 255))
-            # Dark backing
-            backing = pygame.Surface(
-                (lbl.get_width() + 10, lbl.get_height() + 6), pygame.SRCALPHA
-            )
-            backing.fill((0, 0, 0, 160))
-            screen.blit(backing, (4, 4))
-            screen.blit(lbl, (9, 7))
+            lbl_w = lbl.get_width()
+            lbl_h = lbl.get_height()
+            # Badge color: green for routes, brown for town
+            if "route" in self.current_map.lower():
+                badge_color = (30, 100, 50, 200)
+            else:
+                badge_color = (100, 60, 20, 200)
+            badge = pygame.Surface((lbl_w + 14, lbl_h + 8), pygame.SRCALPHA)
+            pygame.draw.rect(badge, badge_color, badge.get_rect(), border_radius=6)
+            badge.blit(lbl, (7, 4))
+            screen.blit(badge, (6, 4))
 
-        # Lead pokemon — top-right
+        # Step counter — bottom-left of top bar
+        if self._font_tiny:
+            step_lbl = self._font_tiny.render(
+                f"Steps: {self._step_count}", True, (200, 200, 200)
+            )
+            screen.blit(step_lbl, (8, bar_h + 4))
+
+        # Lead pokemon panel — top-right
         if self.party and self._font_small and self._font_med:
             lead = self.party[0]
-            info_w = 160
-            info_x = sw - info_w - 4
+            info_w = 170
+            info_h = 56
+            info_x = sw - info_w - 6
             info_y = 4
 
-            # Background panel
-            panel = pygame.Surface((info_w, 44), pygame.SRCALPHA)
-            panel.fill((0, 0, 0, 160))
+            # Panel background
+            panel = pygame.Surface((info_w, info_h), pygame.SRCALPHA)
+            pygame.draw.rect(panel, (0, 0, 0, 170), panel.get_rect(), border_radius=8)
             screen.blit(panel, (info_x, info_y))
+
+            # Mini colored pokemon dot
+            dot_color = _pokemon_dot_color(lead.name)
+            dot_cx = info_x + 12
+            dot_cy = info_y + 13
+            pygame.draw.circle(screen, dot_color, (dot_cx, dot_cy), 7)
+            pygame.draw.circle(screen, (255, 255, 255), (dot_cx, dot_cy), 7, 1)
+            # Pokeball divider line on dot
+            pygame.draw.line(
+                screen, (255, 255, 255), (dot_cx - 7, dot_cy), (dot_cx + 7, dot_cy), 1
+            )
 
             # Name + level
             name_text = f"{lead.name}  Lv.{lead.level}"
             nlbl = self._font_med.render(name_text, True, (255, 255, 255))
-            screen.blit(nlbl, (info_x + 6, info_y + 4))
+            screen.blit(nlbl, (info_x + 24, info_y + 5))
 
             # HP bar
-            bar_x = info_x + 6
-            bar_y = info_y + 28
-            bar_w = info_w - 12
-            bar_h = 8
+            bar_x = info_x + 8
+            bar_y = info_y + 30
+            bar_w = info_w - 16
+            bar_h_px = 7
+            # Border
             pygame.draw.rect(
-                screen, (60, 60, 60), pygame.Rect(bar_x, bar_y, bar_w, bar_h)
+                screen,
+                COLOR_HP_BORDER,
+                pygame.Rect(bar_x - 1, bar_y - 1, bar_w + 2, bar_h_px + 2),
+            )
+            # Background
+            pygame.draw.rect(
+                screen, (60, 60, 60), pygame.Rect(bar_x, bar_y, bar_w, bar_h_px)
             )
             hp_ratio = max(0.0, lead.hp_pct)
             filled = int(bar_w * hp_ratio)
-            hp_color = COLOR_HP_GOOD if hp_ratio > 0.25 else COLOR_HP_LOW
+            if hp_ratio > 0.5:
+                hp_color = COLOR_HP_GOOD
+            elif hp_ratio > 0.25:
+                hp_color = COLOR_HP_MID
+            else:
+                hp_color = COLOR_HP_LOW
             if filled > 0:
                 pygame.draw.rect(
-                    screen, hp_color, pygame.Rect(bar_x, bar_y, filled, bar_h)
+                    screen, hp_color, pygame.Rect(bar_x, bar_y, filled, bar_h_px)
                 )
-            # HP text
+
+            # HP numbers
             hp_txt = self._font_small.render(
-                f"{lead.hp}/{lead.max_hp}", True, (220, 220, 220)
+                f"HP {lead.hp}/{lead.max_hp}", True, (200, 220, 200)
             )
-            screen.blit(hp_txt, (bar_x + bar_w + 4, bar_y - 2))
+            screen.blit(hp_txt, (info_x + 8, info_y + 40))
+
+            # Pokeball count — right side of panel
+            pb_txt = self._font_small.render(
+                f"({chr(9679)}) x{self.pokeballs}", True, (200, 200, 255)
+            )
+            screen.blit(pb_txt, (info_x + info_w - pb_txt.get_width() - 6, info_y + 40))
 
     def _try_move(self, dx: int, dy: int):
         tm = self.maps[self.current_map]
@@ -609,6 +1077,14 @@ class OverworldScene(Scene):
             return
 
         if tile in TILE_DEFS and TILE_DEFS[tile].solid:
+            return
+
+        # Block movement into NPC tile
+        if (
+            self.current_map == PROF_NPC_MAP
+            and new_col == PROF_NPC_COL
+            and new_row == PROF_NPC_ROW
+        ):
             return
 
         if tile == ">":

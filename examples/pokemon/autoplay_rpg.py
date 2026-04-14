@@ -81,37 +81,47 @@ class RPGAutoPlayer:
             self._stuck_timer = 0
         self._last_pos = pos
 
-        # Choose direction — seek grass for encounters, or explore
+        # Choose direction — context-aware navigation
         directions = [pygame.K_RIGHT, pygame.K_DOWN, pygame.K_UP, pygame.K_LEFT]
         dir_offsets = [(1, 0), (0, 1), (0, -1), (-1, 0)]
 
-        # Try to find nearby grass tiles and move toward them
         col = getattr(scene, "_player_col", 0)
         row = getattr(scene, "_player_row", 0)
         current_map = getattr(scene, "current_map", "town")
         tilemap = scene.maps.get(current_map) if hasattr(scene, "maps") else None
+        party = getattr(scene, "party", [])
 
+        # Check if lead pokemon is low HP — go heal at Pokemon Center
+        lead_hp_pct = party[0].hp_pct if party else 1.0
+        needs_heal = lead_hp_pct < 0.35
+
+        # Find nearby tiles of interest
         grass_dir = None
-        if tilemap and current_map != "town":
-            # Look for grass in each direction (check 3 tiles ahead)
+        center_dir = None
+        if tilemap:
             for i, (dc, dr) in enumerate(dir_offsets):
-                for dist in range(1, 4):
+                for dist in range(1, 6):
                     tc, tr = col + dc * dist, row + dr * dist
                     tile = tilemap.get_tile(tc, tr)
-                    if tile == "G":
+                    if tile == "G" and grass_dir is None and current_map != "town":
                         grass_dir = i
-                        break
-                if grass_dir is not None:
-                    break
+                    if tile == "C" and center_dir is None:
+                        center_dir = i
+                    if tile in ("W", "H") and dist == 1:
+                        break  # wall blocks this direction
 
         if self._stuck_timer > 2.0:
             key = random.choice(directions)
             self._stuck_timer = 0
+        elif needs_heal and current_map == "town" and center_dir is not None:
+            # Go heal!
+            key = directions[center_dir]
+        elif needs_heal and current_map != "town":
+            # Go back to town to heal (head left toward exits)
+            key = random.choices(directions, weights=[1, 2, 2, 5])[0]
         elif grass_dir is not None and random.random() < 0.7:
-            # Move toward grass 70% of the time
             key = directions[grass_dir]
         elif self._steps_taken < 15:
-            # Early: go right to leave town
             key = random.choices(directions, weights=[5, 2, 2, 1])[0]
         else:
             key = random.choices(directions, weights=[3, 3, 3, 1])[0]

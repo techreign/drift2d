@@ -83,18 +83,47 @@ class TitleScene(Scene):
             pygame.draw.rect(screen, c, (0, y, W, 4))
 
         if self.state == "title":
+            # Pokeball decoration in background
+            ball_y = H // 2 + 20
+            ball_r = 80
+            pygame.draw.circle(screen, (30, 30, 50), (W // 2, ball_y), ball_r)
+            pygame.draw.circle(screen, (200, 40, 40), (W // 2, ball_y), ball_r - 2)
+            pygame.draw.rect(
+                screen, (240, 240, 240), (W // 2 - ball_r, ball_y - 3, ball_r * 2, 6)
+            )
+            pygame.draw.circle(
+                screen,
+                (240, 240, 240),
+                (W // 2, ball_y - ball_r + 2),
+                ball_r - 2,
+                draw_top_left=True,
+                draw_top_right=True,
+            )
+            pygame.draw.circle(screen, (30, 30, 50), (W // 2, ball_y), 18)
+            pygame.draw.circle(screen, (240, 240, 240), (W // 2, ball_y), 12)
+            pygame.draw.circle(screen, (30, 30, 50), (W // 2, ball_y), 6)
+
             bob = math.sin(self.timer * 2) * 5
-            r.draw_text("DRIFT", W // 2 - 60, 100 + bob, color=(200, 200, 255), size=48)
+
+            # Title with shadow
+            r.draw_text("DRIFT", W // 2 - 58, 102 + bob, color=(20, 20, 40), size=48)
+            r.draw_text("DRIFT", W // 2 - 60, 100 + bob, color=(220, 220, 255), size=48)
+            r.draw_text(
+                "POKEMON", W // 2 - 83, 157 + bob, color=(180, 140, 20), size=44
+            )
             r.draw_text(
                 "POKEMON", W // 2 - 85, 155 + bob, color=(255, 220, 80), size=44
             )
 
             alpha = int(128 + 127 * math.sin(self.timer * 3))
             r.draw_text(
-                "Press SPACE", W // 2 - 65, 280, color=(alpha, alpha, alpha), size=20
+                "Press SPACE or Z",
+                W // 2 - 80,
+                300,
+                color=(alpha, alpha, alpha),
+                size=20,
             )
 
-            # Version text
             r.draw_text(
                 "Powered by Drift2D", W // 2 - 85, H - 40, color=(60, 60, 80), size=14
             )
@@ -121,18 +150,98 @@ class TitleScene(Scene):
                     screen, border_color, (x - 10, y - 10, 150, 200), 2, border_radius=8
                 )
 
-                # Pokemon circle
+                # Pokemon drawn shape
                 pcolor = species.color
-                radius = 35 if is_selected else 30
                 bob2 = math.sin(self.timer * 3 + i) * 3 if is_selected else 0
-                pygame.draw.circle(screen, pcolor, (x + 65, y + 50 + int(bob2)), radius)
-                # Eye
-                pygame.draw.circle(
-                    screen, (255, 255, 255), (x + 75, y + 43 + int(bob2)), 6
+                cx, cy = x + 65, y + 50 + int(bob2)
+                sz = 38 if is_selected else 32
+
+                # Shadow
+                pygame.draw.ellipse(
+                    screen, (0, 0, 0, 60), (cx - sz, cy + sz - 6, sz * 2, 12)
                 )
-                pygame.draw.circle(
-                    screen, (30, 30, 30), (x + 77, y + 43 + int(bob2)), 3
-                )
+
+                if name == "charmander":
+                    # Body
+                    pygame.draw.ellipse(
+                        screen,
+                        (240, 140, 50),
+                        (cx - sz // 2, cy - sz // 2, sz, int(sz * 1.1)),
+                    )
+                    # Belly
+                    pygame.draw.ellipse(
+                        screen,
+                        (255, 220, 140),
+                        (cx - sz // 4, cy - sz // 6, sz // 2, sz // 2),
+                    )
+                    # Flame tail
+                    pygame.draw.polygon(
+                        screen,
+                        (255, 100, 30),
+                        [
+                            (cx - sz // 2 - 5, cy),
+                            (cx - sz // 2 - 18, cy - 15),
+                            (cx - sz // 2 - 8, cy + 5),
+                        ],
+                    )
+                    pygame.draw.polygon(
+                        screen,
+                        (255, 200, 50),
+                        [
+                            (cx - sz // 2 - 8, cy - 2),
+                            (cx - sz // 2 - 14, cy - 10),
+                            (cx - sz // 2 - 5, cy + 2),
+                        ],
+                    )
+                    # Eyes
+                    pygame.draw.circle(screen, (255, 255, 255), (cx + 5, cy - 6), 5)
+                    pygame.draw.circle(screen, (30, 30, 120), (cx + 7, cy - 6), 3)
+                elif name == "squirtle":
+                    # Shell
+                    pygame.draw.ellipse(
+                        screen,
+                        (140, 100, 50),
+                        (cx - sz // 2 - 3, cy - sz // 3, sz + 6, int(sz * 0.9)),
+                    )
+                    # Body
+                    pygame.draw.ellipse(
+                        screen,
+                        (100, 160, 230),
+                        (cx - sz // 2, cy - sz // 2, sz, int(sz * 1.1)),
+                    )
+                    # Belly
+                    pygame.draw.ellipse(
+                        screen,
+                        (200, 220, 240),
+                        (cx - sz // 4, cy - sz // 6, sz // 2, sz // 2),
+                    )
+                    # Eyes
+                    pygame.draw.circle(screen, (255, 255, 255), (cx + 4, cy - 8), 5)
+                    pygame.draw.circle(screen, (120, 30, 30), (cx + 6, cy - 8), 3)
+                elif name == "bulbasaur":
+                    # Body
+                    pygame.draw.ellipse(
+                        screen,
+                        (100, 180, 120),
+                        (cx - sz // 2, cy - sz // 3, sz, int(sz * 0.8)),
+                    )
+                    # Bulb
+                    pygame.draw.ellipse(
+                        screen,
+                        (40, 120, 50),
+                        (cx - sz // 3, cy - sz // 2 - 8, int(sz * 0.7), int(sz * 0.5)),
+                    )
+                    pygame.draw.ellipse(
+                        screen,
+                        (60, 150, 70),
+                        (cx - sz // 4, cy - sz // 2 - 4, int(sz * 0.5), int(sz * 0.35)),
+                    )
+                    # Spots
+                    pygame.draw.circle(screen, (70, 140, 90), (cx - 8, cy + 2), 4)
+                    pygame.draw.circle(screen, (70, 140, 90), (cx + 6, cy + 4), 3)
+                    # Eyes
+                    pygame.draw.circle(screen, (255, 255, 255), (cx + 6, cy - 4), 5)
+                    pygame.draw.circle(screen, (200, 30, 30), (cx + 8, cy - 4), 3)
 
                 # Name
                 r.draw_text(
