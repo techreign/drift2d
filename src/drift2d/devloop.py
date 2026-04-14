@@ -197,23 +197,30 @@ class DevLoop:
         ss_dir = self.output_dir / "screenshots"
         ss_dir.mkdir(exist_ok=True)
 
-        # Keep a rolling window of screenshots (last 20)
-        filename = f"frame_{self._screenshot_count:04d}.png"
-        path = ss_dir / filename
-        pygame.image.save(self.game.screen, str(path))
+        try:
+            # Keep a rolling window of screenshots (last 20)
+            filename = f"frame_{self._screenshot_count:04d}.png"
+            path = ss_dir / filename
+            pygame.image.save(self.game.screen, str(path))
 
-        # Also save as "latest.png" for easy access
-        latest = ss_dir / "latest.png"
-        pygame.image.save(self.game.screen, str(latest))
+            # Also save as "latest.png" — write to temp then rename to avoid lock issues
+            latest = ss_dir / "latest.png"
+            tmp = ss_dir / "_latest_tmp.png"
+            pygame.image.save(self.game.screen, str(tmp))
+            if latest.exists():
+                latest.unlink()
+            tmp.rename(latest)
 
-        self.state.screenshot_path = str(latest)
-        self._screenshot_count += 1
+            self.state.screenshot_path = str(latest)
+            self._screenshot_count += 1
 
-        # Clean old screenshots (keep last 20)
-        if self._screenshot_count > 20:
-            old = ss_dir / f"frame_{self._screenshot_count - 21:04d}.png"
-            if old.exists():
-                old.unlink()
+            # Clean old screenshots (keep last 20)
+            if self._screenshot_count > 20:
+                old = ss_dir / f"frame_{self._screenshot_count - 21:04d}.png"
+                if old.exists():
+                    old.unlink()
+        except Exception:
+            pass  # never crash the game over a screenshot
 
     def _dump_state(self):
         """Write current game state to JSON."""

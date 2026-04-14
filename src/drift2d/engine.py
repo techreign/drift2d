@@ -56,6 +56,7 @@ class Game:
         self.running = False
         self.debug = False
         self.dev: "DevLoop | None" = None  # set via enable_dev()
+        self.autoplay: "AutoPlayer | None" = None  # set via enable_autoplay()
 
         # Core systems
         self.screen = pygame.display.set_mode((width, height))
@@ -111,6 +112,13 @@ class Game:
 
         return game
 
+    def enable_autoplay(self):
+        """Enable AI autoplay — bot plays the game for testing."""
+        from .autoplay import AutoPlayer
+
+        self.autoplay = AutoPlayer(self)
+        self.autoplay.enable()
+
     def enable_dev(
         self,
         output_dir: str = ".drift-dev",
@@ -137,6 +145,10 @@ class Game:
             self.dt = min(self.dt, 0.05)  # cap to avoid spiral of death
             self.time += self.dt
             self.frame_count += 1
+
+            # AutoPlay (inject synthetic input before processing events)
+            if self.autoplay:
+                self.autoplay.update(self.dt)
 
             # Events
             events = pygame.event.get()
@@ -172,8 +184,9 @@ class Game:
             if scene:
                 scene.draw()
 
-            # Auto-draw all entities with sprites
-            self.renderer.draw_entities(self.world.query())
+            # Auto-draw entities (skip if scene handles its own rendering)
+            if not getattr(scene, "custom_draw", False):
+                self.renderer.draw_entities(self.world.query())
 
             # Debug overlay
             if self.debug:

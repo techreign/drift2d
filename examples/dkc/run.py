@@ -16,9 +16,12 @@ game = Game.from_project(".")
 # Enable dev loop — Claude watches the game live
 game.enable_dev(
     output_dir=".drift-dev",
-    screenshot_interval=3.0,
+    screenshot_interval=2.0,
     watch_dirs=["scenes"],
 )
+
+# Enable autoplay — bot plays, Claude watches and improves
+game.enable_autoplay()
 
 # Register persistent scenes
 game.scenes.register("menu", MenuScene())

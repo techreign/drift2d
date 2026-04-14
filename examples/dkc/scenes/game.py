@@ -52,6 +52,7 @@ C_CLOUD = (20, 50, 30)
 class GameScene(Scene):
     def __init__(self, level_num: int = 1):
         super().__init__()
+        self.custom_draw = True  # we handle all rendering in draw()
         self.level_num = level_num
         self.tilemap = Tilemap(tile_size=32)
         self.lives = 3
@@ -218,7 +219,7 @@ class GameScene(Scene):
         self.on_ground = False
         self.dying = False
         self.level_complete = False
-        self.bananas = 0
+        # Don't reset bananas — they carry over between levels
 
     def _generate_background(self):
         """Create random background decoration positions."""
