@@ -414,6 +414,11 @@ class GameScene(Scene):
                     self.game.world.despawn(enemy)
                     rb.velocity.y = -380  # bigger bounce off enemy
                     self.total_kills += 1
+                    # Combo: each aerial kill in a row multiplies the score
+                    self.combo += 1
+                    self.combo_timer = 3.0  # 3s window for next aerial kill
+                    multiplier = min(self.combo, 8)  # cap at x8
+                    self.score += 100 * multiplier
                     if self.game.dev:
                         self.game.dev.log_enemy_kill()
                     self.shake_timer = 0.15
@@ -734,15 +739,41 @@ class GameScene(Scene):
             pygame.draw.circle(screen, C_PLAYER, (200 + i * 22, 20), 8)
             pygame.draw.circle(screen, C_PLAYER_BELLY, (200 + i * 22, 22), 4)
 
-        # Bananas
-        pygame.draw.ellipse(screen, C_BANANA, (310, 12, 16, 12))
-        r.draw_text(f"x{self.bananas}", 330, 10, color=C_BANANA, size=18)
+        # Bananas — flash yellow->white briefly after collecting
+        if self.banana_flash_timer > 0:
+            flash_t = self.banana_flash_timer / 0.4  # 1.0 -> 0.0
+            banana_color = (
+                int(255),
+                int(220 + 35 * flash_t),
+                int(50 + 205 * flash_t),
+            )
+        else:
+            banana_color = C_BANANA
+        pygame.draw.ellipse(screen, banana_color, (310, 12, 16, 12))
+        r.draw_text(f"x{self.bananas}", 330, 10, color=banana_color, size=18)
 
         # Kills
         pygame.draw.ellipse(screen, C_ENEMY, (400, 11, 16, 14))
         r.draw_text(f"x{self.total_kills}", 420, 10, color=(255, 150, 150), size=18)
 
-        # Progress
+        # Score
+        r.draw_text(f"{self.score}", 490, 10, color=(255, 255, 180), size=18)
+
+        # Combo multiplier — shown when active (aerial kill streak)
+        if self.combo >= 2:
+            combo_alpha = min(255, int(self.combo_timer / 3.0 * 255))
+            combo_surf = pygame.Surface((80, 24), pygame.SRCALPHA)
+            combo_surf.fill((0, 0, 0, 0))
+            cx = self.game.width // 2 - 40
+            r.draw_text(
+                f"x{self.combo} COMBO!",
+                cx,
+                self.game.height - 60,
+                color=(255, 220, 50),
+                size=22,
+            )
+
+        # Progress bar
         if self.total_bananas > 0:
             pct = min(1.0, self.bananas / max(1, self.total_bananas))
             bar_w = 120
