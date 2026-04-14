@@ -1,0 +1,11 @@
+[game]
+title = "Drift Platformer"
+
+[window]
+width = 800
+height = 600
+fps = 60
+bg_color = [15, 15, 25]
+
+[physics]
+gravity = 980.0

@@ -1,0 +1,11 @@
+[game]
+title = "Drift Top-Down"
+
+[window]
+width = 640
+height = 480
+fps = 60
+bg_color = [10, 15, 10]
+
+[physics]
+gravity = 0.0

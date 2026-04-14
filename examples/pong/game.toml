@@ -1,0 +1,11 @@
+[game]
+title = "Drift Pong"
+
+[window]
+width = 640
+height = 480
+fps = 60
+bg_color = [5, 5, 15]
+
+[physics]
+gravity = 0.0

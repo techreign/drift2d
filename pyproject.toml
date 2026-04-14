@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "drift2d"
+version = "0.1.0"
+description = "A Claude-first 2D game engine. Plain text. Pure Python. Built for AI-assisted development."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Shoaib" }]
+keywords = ["game-engine", "2d", "ai-first", "pygame", "claude"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Games/Entertainment",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "pygame-ce>=2.4",
+    "pyyaml>=6.0",
+    "click>=8.0",
+]
+
+[project.scripts]
+drift = "drift2d.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/shoaib/drift2d"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/drift2d"]

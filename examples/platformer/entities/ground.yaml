@@ -1,0 +1,19 @@
+name: ground
+tags: [solid]
+
+transform:
+  position: [400, 560]
+
+sprite:
+  color: [60, 60, 80]
+  width: 800
+  height: 80
+  layer: 0
+
+rigidbody:
+  kinematic: true
+
+collider:
+  width: 800
+  height: 80
+  tag: ground
