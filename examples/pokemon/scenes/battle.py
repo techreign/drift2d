@@ -125,15 +125,17 @@ class BattleScene(Scene):
 
     def __init__(
         self,
-        player_party: list["Pokemon"],
-        wild_pokemon: "Pokemon",
+        player_party: list["Pokemon"] | None = None,
+        wild_pokemon: "Pokemon | None" = None,
         pokeballs: int = 5,
     ):
         super().__init__()
 
-        self.player_party = player_party  # live reference — HP/XP changes persist
+        self.player_party = player_party or []
         self.wild = wild_pokemon
         self.pokeballs = pokeballs
+        # Aliases used by overworld to set before pushing
+        self.party = self.player_party
 
         # Active pokemon indices
         self._player_idx = 0
@@ -155,9 +157,9 @@ class BattleScene(Scene):
         self._type_speed = 0.04  # seconds per character
         self._msg_done = False  # typewriter finished
 
-        # HP bar animation
-        self._player_hp_display = float(self._player.hp)
-        self._enemy_hp_display = float(self.wild.hp)
+        # HP bar animation (initialized properly in enter())
+        self._player_hp_display = 0.0
+        self._enemy_hp_display = 0.0
 
         # Slide-in animation (intro)
         self._intro_timer = 0.0
@@ -183,6 +185,11 @@ class BattleScene(Scene):
     # ── Convenience properties ────────────────────────────────────────────────
 
     @property
+    def state(self) -> str:
+        """String state name for external readers (e.g. autoplay bot)."""
+        return self._state.name if self._state else "UNKNOWN"
+
+    @property
     def _player(self) -> "Pokemon":
         return self.player_party[self._player_idx]
 
@@ -193,9 +200,23 @@ class BattleScene(Scene):
     # ── Scene lifecycle ───────────────────────────────────────────────────────
 
     def enter(self):
+        # Sync party reference (overworld sets self.party before push)
+        if self.party:
+            self.player_party = self.party
+        self._player_idx = 0
+        # Find first non-fainted pokemon
+        for i, p in enumerate(self.player_party):
+            if not p.is_fainted:
+                self._player_idx = i
+                break
         self._state = State.INTRO
+        self._action_idx = 0
+        self._move_idx = 0
+        self._messages.clear()
+        self._current_msg = ""
+        self._displayed = ""
         self._player_hp_display = float(self._player.hp)
-        self._enemy_hp_display = float(self.wild.hp)
+        self._enemy_hp_display = float(self.wild.hp) if self.wild else 0
         self._push_message(
             f"A wild {self.wild.name} appeared!",
             after=State.CHOOSE_ACTION,

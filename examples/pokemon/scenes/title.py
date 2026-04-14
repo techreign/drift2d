@@ -60,9 +60,15 @@ class TitleScene(Scene):
                 party = [starter]
 
                 from scenes.overworld import OverworldScene
+                from scenes.battle import BattleScene
 
-                overworld = OverworldScene(party, pokeballs=10)
+                overworld = OverworldScene()
+                overworld.party = party
+                overworld.pokeballs = 10
                 self.game.scenes.register("overworld", overworld)
+                battle = BattleScene()
+                battle.pokeballs = 10
+                self.game.scenes.register("battle", battle)
                 self.game.scenes.switch("overworld")
 
     def draw(self):
