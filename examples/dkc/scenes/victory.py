@@ -9,7 +9,12 @@ from drift2d import Scene, ParticleEmitter, ParticleConfig
 class VictoryScene(Scene):
     def __init__(self):
         super().__init__()
+        self.custom_draw = True
         self.timer = 0.0
+
+    def enter(self):
+        self.timer = 0.0
+        self.game.world.clear()
         self.confetti = ParticleEmitter(
             ParticleConfig(
                 count=5,

@@ -9,6 +9,7 @@ from drift2d import Scene, ParticleEmitter, ParticleConfig
 class MenuScene(Scene):
     def __init__(self):
         super().__init__()
+        self.custom_draw = True
         self.fireflies = ParticleEmitter(
             ParticleConfig(
                 count=1,

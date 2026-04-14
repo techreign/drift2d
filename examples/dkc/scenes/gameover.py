@@ -8,7 +8,12 @@ from drift2d import Scene
 class GameOverScene(Scene):
     def __init__(self):
         super().__init__()
+        self.custom_draw = True  # don't auto-draw game entities
         self.timer = 0.0
+
+    def enter(self):
+        self.timer = 0.0
+        self.game.world.clear()  # remove lingering game entities
 
     def update(self, dt):
         self.timer += dt
